@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>lurk · kautiontape</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+    :root {
+      --yellow: #FFD000;
+      --yellow-dim: #FFD00018;
+      --yellow-mid: #FFD00040;
+      --bg: #0C0C0E;
+      --bg-card: #141417;
+      --bg-card-hover: #1A1A1F;
+      --bg-input: #0A0A0C;
+      --border: #2A2A30;
+      --border-hover: #3A3A42;
+      --text: #E8E8EC;
+      --text-dim: #8888A0;
+      --red: #FF5252;
+      --green: #4CAF50;
+      --mono: 'JetBrains Mono', monospace;
+      --sans: 'DM Sans', sans-serif;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.5;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      opacity: 0.03;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 256px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .page {
+      position: relative;
+      z-index: 1;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 3rem 1.5rem 4rem;
+    }
+
+    header { margin-bottom: 2.5rem; }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .brand-stripe {
+      width: 4px;
+      height: 2.25rem;
+      background: repeating-linear-gradient(
+        -45deg, var(--yellow), var(--yellow) 3px,
+        var(--bg) 3px, var(--bg) 6px
+      );
+      border-radius: 2px;
+    }
+
+    .brand h1 {
+      font-family: var(--mono);
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand h1 .accent { color: var(--yellow); }
+
+    .tagline {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      letter-spacing: 0.04em;
+      margin-left: calc(4px + 0.75rem);
+    }
+
+    .crumb {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 1rem;
+    }
+
+    .crumb a { color: var(--text-dim); text-decoration: none; }
+    .crumb a:hover { color: var(--yellow); }
+
+    section {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    section h2 {
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-dim);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .section-status {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      letter-spacing: 0.04em;
+    }
+    .section-status.ok {
+      background: rgba(76, 175, 80, 0.12);
+      color: var(--green);
+      border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+    .section-status.missing {
+      background: rgba(255, 82, 82, 0.1);
+      color: var(--red);
+      border: 1px solid rgba(255, 82, 82, 0.25);
+    }
+
+    label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      margin-bottom: 0.35rem;
+      letter-spacing: 0.04em;
+    }
+
+    input[type=text], input[type=password], textarea {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      padding: 0.6rem 0.75rem;
+      border-radius: 5px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, textarea:focus { border-color: var(--yellow-mid); }
+
+    .field { margin-bottom: 0.9rem; }
+    .field-row { display: flex; gap: 0.75rem; }
+    .field-row .field { flex: 1; }
+
+    .btn {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 0.55rem 0.95rem;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      border-radius: 5px;
+      cursor: pointer;
+      transition: all 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .btn:hover { border-color: var(--border-hover); background: var(--bg-card-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.primary {
+      background: var(--yellow);
+      color: #0a0a0c;
+      border-color: var(--yellow);
+      font-weight: 600;
+    }
+    .btn.primary:hover { background: #FFE040; border-color: #FFE040; }
+    .btn.subtle { color: var(--text-dim); padding: 0.35rem 0.6rem; font-size: 0.75rem; }
+    .btn.danger { color: var(--red); border-color: rgba(255,82,82,0.3); }
+    .btn.danger:hover { background: rgba(255,82,82,0.08); border-color: var(--red); }
+
+    .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+    details.help {
+      margin-top: 0.75rem;
+      border: 1px dashed var(--border);
+      border-radius: 5px;
+      padding: 0.6rem 0.85rem;
+    }
+    details.help summary {
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--text-dim);
+      cursor: pointer;
+      list-style: none;
+    }
+    details.help summary::before { content: '▸ '; }
+    details.help[open] summary::before { content: '▾ '; }
+    details.help[open] summary { color: var(--text); margin-bottom: 0.6rem; }
+    details.help ol { margin-left: 1.2rem; font-size: 0.85rem; color: var(--text-dim); }
+    details.help li { margin-bottom: 0.35rem; }
+    details.help code {
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      background: var(--bg-input);
+      padding: 0.1rem 0.35rem;
+      border-radius: 3px;
+      color: var(--yellow);
+    }
+
+    .channel-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0.75rem;
+    }
+
+    .channel-card {
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem 1.1rem;
+      transition: border-color 0.15s;
+    }
+    .channel-card:hover { border-color: var(--border-hover); }
+
+    .channel-card .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .channel-name {
+      font-weight: 600;
+      font-size: 1.05rem;
+    }
+    .channel-meta {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      margin-top: 0.15rem;
+    }
+    .channel-meta .id { color: var(--yellow-mid); }
+
+    .channel-history {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin: 0.6rem 0;
+      padding: 0.4rem 0.6rem;
+      background: rgba(255, 208, 0, 0.04);
+      border-left: 2px solid var(--yellow-mid);
+      border-radius: 3px;
+    }
+    .channel-history.empty {
+      background: transparent;
+      border-left-color: var(--border);
+      color: var(--text-dim);
+      font-style: italic;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 2rem 1rem;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+    }
+
+    .add-form {
+      margin-top: 1.25rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .add-form h3 {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-dim);
+      margin-bottom: 0.75rem;
+      letter-spacing: 0.04em;
+    }
+
+    .progress-panel {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      left: 1.5rem;
+      max-width: 480px;
+      margin-left: auto;
+      background: var(--bg-card);
+      border: 1px solid var(--yellow-mid);
+      border-radius: 8px;
+      padding: 1.1rem 1.25rem;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+      z-index: 10;
+    }
+    .progress-panel h3 {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--yellow);
+      margin-bottom: 0.6rem;
+      letter-spacing: 0.04em;
+    }
+    .progress-panel .status {
+      font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+    }
+    .progress-bar {
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 0.85rem;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--yellow);
+      width: 0;
+      transition: width 0.3s;
+    }
+    .progress-bar.indeterminate .progress-bar-fill {
+      width: 30%;
+      animation: indeterminate 1.4s ease-in-out infinite;
+    }
+    @keyframes indeterminate {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(450%); }
+    }
+
+    .toast {
+      padding: 0.75rem 0.95rem;
+      border-radius: 5px;
+      font-size: 0.85rem;
+      margin-top: 0.75rem;
+    }
+    .toast.error {
+      background: rgba(255,82,82,0.08);
+      border: 1px solid rgba(255,82,82,0.3);
+      color: var(--red);
+    }
+    .toast.success {
+      background: rgba(76,175,80,0.08);
+      border: 1px solid rgba(76,175,80,0.3);
+      color: var(--green);
+    }
+
+    .hidden { display: none !important; }
+
+    footer {
+      text-align: center;
+      color: var(--text-dim);
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      margin-top: 2rem;
+      letter-spacing: 0.04em;
+    }
+    footer a { color: var(--text-dim); }
+    footer a:hover { color: var(--yellow); }
+
+    @media (min-width: 640px) {
+      .channel-grid { grid-template-columns: 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="crumb"><a href="https://kautiontape.com">kautiontape</a> / lurk</div>
+      <div class="brand">
+        <div class="brand-stripe"></div>
+        <h1><span class="accent">lurk</span></h1>
+      </div>
+      <p class="tagline">catch up on discord channels without opening discord</p>
+    </header>
+
+    <section id="token-section">
+      <h2>
+        <span>discord token</span>
+        <span id="token-status" class="section-status missing">not set</span>
+      </h2>
+
+      <div id="token-input-area">
+        <div class="field">
+          <label for="token-input">paste your discord user token</label>
+          <input type="password" id="token-input" placeholder="OTU3MjQ1...mG5g3eb..." autocomplete="off" spellcheck="false">
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="save-token">save token</button>
+          <button class="btn subtle" id="show-token-toggle">show</button>
+        </div>
+        <details class="help">
+          <summary>how to get your discord token</summary>
+          <ol>
+            <li>Open <strong>discord.com</strong> in your browser and log in (not the desktop app).</li>
+            <li>Press <code>F12</code> to open DevTools and switch to the <strong>Network</strong> tab.</li>
+            <li>Click any channel in Discord so the network tab fills with requests.</li>
+            <li>In the filter box at the top of the Network tab, type <code>/api</code>.</li>
+            <li>Click any matching request, then look at the <strong>Headers</strong> panel.</li>
+            <li>Find <code>authorization:</code> in the request headers. The value next to it is your token.</li>
+            <li>Right-click that value → Copy value, paste it above, click save.</li>
+          </ol>
+          <p style="font-size:0.75rem;color:var(--text-dim);margin-top:0.5rem;">
+            Your token never leaves your browser except to the lurk proxy on its way to Discord. It's stored in this browser's localStorage.
+          </p>
+        </details>
+      </div>
+
+      <div id="token-set-area" class="hidden">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+          <div style="font-family:var(--mono);font-size:0.8rem;color:var(--text-dim);">
+            token loaded · <span id="token-fingerprint" style="color:var(--yellow);"></span>
+          </div>
+          <div class="btn-row">
+            <button class="btn subtle" id="change-token">change</button>
+            <button class="btn subtle danger" id="forget-token">forget</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="channels-section">
+      <h2>
+        <span>saved channels</span>
+        <span id="channel-count" class="section-status" style="background:var(--yellow-dim);color:var(--yellow);border:1px solid var(--yellow-mid);">0</span>
+      </h2>
+
+      <div id="channels-list" class="channel-grid"></div>
+
+      <div class="add-form">
+        <h3>+ add channel</h3>
+        <div class="field-row">
+          <div class="field">
+            <label for="new-name">friendly name</label>
+            <input type="text" id="new-name" placeholder="cherry-blossoms-rp">
+          </div>
+          <div class="field">
+            <label for="new-id">channel id</label>
+            <input type="text" id="new-id" placeholder="615141177838010378" inputmode="numeric">
+          </div>
+        </div>
+        <div class="field">
+          <label for="new-guild">guild / server label (optional)</label>
+          <input type="text" id="new-guild" placeholder="Macguffins, Ltd.">
+        </div>
+        <div class="btn-row">
+          <button class="btn primary" id="add-channel">add</button>
+          <button class="btn subtle" id="lookup-channel">look up name from id</button>
+        </div>
+        <div id="add-error"></div>
+      </div>
+    </section>
+
+    <div id="progress" class="progress-panel hidden">
+      <h3 id="progress-title">fetching messages</h3>
+      <div class="status" id="progress-status">starting...</div>
+      <div class="progress-bar indeterminate"><div class="progress-bar-fill"></div></div>
+      <div class="btn-row">
+        <button class="btn" id="cancel-run">cancel</button>
+      </div>
+      <div id="progress-toast"></div>
+    </div>
+
+    <footer>
+      <p>state lives in this browser only · <a href="https://kautiontape.com">← kautiontape</a></p>
+    </footer>
+  </div>
+
+  <script>
+    // ---- state ----
+    const STORAGE_KEY = 'lurk.state.v1';
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return { token: null, channels: [], history: {} };
+        return JSON.parse(raw);
+      } catch {
+        return { token: null, channels: [], history: {} };
+      }
+    }
+
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    let state = loadState();
+    let currentRun = null;
+
+    // ---- helpers ----
+    const $ = (id) => document.getElementById(id);
+
+    function fingerprint(token) {
+      if (!token) return '';
+      return token.slice(0, 4) + '…' + token.slice(-4);
+    }
+
+    function snowflakeToDate(id) {
+      // discord snowflake epoch: 2015-01-01
+      const DISCORD_EPOCH = 1420070400000n;
+      try {
+        const ts = (BigInt(id) >> 22n) + DISCORD_EPOCH;
+        return new Date(Number(ts));
+      } catch {
+        return null;
+      }
+    }
+
+    function maxSnowflake(a, b) {
+      if (!a) return b;
+      if (!b) return a;
+      return BigInt(a) > BigInt(b) ? a : b;
+    }
+
+    function formatDate(d) {
+      if (!d) return '';
+      return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    }
+
+    function formatAgo(d) {
+      if (!d) return '';
+      const diff = Date.now() - d.getTime();
+      const m = Math.floor(diff / 60000);
+      const h = Math.floor(m / 60);
+      const days = Math.floor(h / 24);
+      if (m < 1) return 'just now';
+      if (m < 60) return `${m}m ago`;
+      if (h < 24) return `${h}h ago`;
+      if (days < 14) return `${days}d ago`;
+      return formatDate(d);
+    }
+
+    // ---- token UI ----
+    function renderTokenSection() {
+      const has = !!state.token;
+      $('token-input-area').classList.toggle('hidden', has);
+      $('token-set-area').classList.toggle('hidden', !has);
+      $('token-status').textContent = has ? 'set' : 'not set';
+      $('token-status').className = 'section-status ' + (has ? 'ok' : 'missing');
+      $('token-fingerprint').textContent = fingerprint(state.token);
+    }
+
+    $('save-token').addEventListener('click', () => {
+      const val = $('token-input').value.trim();
+      if (val.length < 20) {
+        alert('that doesn\'t look like a discord token');
+        return;
+      }
+      state.token = val;
+      saveState();
+      $('token-input').value = '';
+      renderTokenSection();
+    });
+
+    $('show-token-toggle').addEventListener('click', () => {
+      const input = $('token-input');
+      const btn = $('show-token-toggle');
+      if (input.type === 'password') { input.type = 'text'; btn.textContent = 'hide'; }
+      else { input.type = 'password'; btn.textContent = 'show'; }
+    });
+
+    $('change-token').addEventListener('click', () => {
+      $('token-input-area').classList.remove('hidden');
+      $('token-set-area').classList.add('hidden');
+    });
+
+    $('forget-token').addEventListener('click', () => {
+      if (!confirm('forget the saved token in this browser?')) return;
+      state.token = null;
+      saveState();
+      renderTokenSection();
+    });
+
+    // ---- channels UI ----
+    function renderChannels() {
+      const list = $('channels-list');
+      list.innerHTML = '';
+      $('channel-count').textContent = state.channels.length;
+
+      if (state.channels.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'empty-state';
+        empty.style.gridColumn = '1 / -1';
+        empty.textContent = 'no channels yet — add one below.';
+        list.appendChild(empty);
+        return;
+      }
+
+      for (const ch of state.channels) {
+        const hist = state.history[ch.id];
+        const card = document.createElement('div');
+        card.className = 'channel-card';
+
+        const top = document.createElement('div');
+        top.className = 'top';
+        const left = document.createElement('div');
+        const name = document.createElement('div');
+        name.className = 'channel-name';
+        name.textContent = ch.name;
+        const meta = document.createElement('div');
+        meta.className = 'channel-meta';
+        const guildPart = ch.guild ? ch.guild + ' · ' : '';
+        meta.innerHTML = guildPart + '<span class="id">' + ch.id + '</span>';
+        left.appendChild(name);
+        left.appendChild(meta);
+        const del = document.createElement('button');
+        del.className = 'btn subtle danger';
+        del.textContent = '✕';
+        del.title = 'remove channel';
+        del.addEventListener('click', () => {
+          if (!confirm(`remove "${ch.name}" from this browser?`)) return;
+          state.channels = state.channels.filter((c) => c.id !== ch.id);
+          delete state.history[ch.id];
+          saveState();
+          renderChannels();
+        });
+        top.appendChild(left);
+        top.appendChild(del);
+
+        const histLine = document.createElement('div');
+        if (hist) {
+          const d = new Date(hist.ran_at);
+          const lastMsgDate = snowflakeToDate(hist.last_message_id);
+          histLine.className = 'channel-history';
+          histLine.innerHTML = `last run ${formatAgo(d)} · ${hist.count} msg${hist.count === 1 ? '' : 's'} · up to ${formatDate(lastMsgDate)}`;
+        } else {
+          histLine.className = 'channel-history empty';
+          histLine.textContent = 'never exported';
+        }
+
+        const btnRow = document.createElement('div');
+        btnRow.className = 'btn-row';
+        if (hist) {
+          const cont = document.createElement('button');
+          cont.className = 'btn primary';
+          cont.textContent = 'continue from last run';
+          cont.addEventListener('click', () => runExport(ch, hist.last_message_id));
+          btnRow.appendChild(cont);
+        }
+        const full = document.createElement('button');
+        full.className = 'btn';
+        full.textContent = hist ? 'full re-export' : 'export all';
+        full.addEventListener('click', () => {
+          if (hist && !confirm('this will fetch the whole channel from the beginning. continue?')) return;
+          runExport(ch, null);
+        });
+        btnRow.appendChild(full);
+
+        const custom = document.createElement('button');
+        custom.className = 'btn subtle';
+        custom.textContent = 'from message id…';
+        custom.addEventListener('click', () => {
+          const id = prompt('start after this message id (exclusive):');
+          if (!id) return;
+          if (!/^\d{1,30}$/.test(id.trim())) {
+            alert('message id must be all digits');
+            return;
+          }
+          runExport(ch, id.trim());
+        });
+        btnRow.appendChild(custom);
+
+        card.appendChild(top);
+        card.appendChild(histLine);
+        card.appendChild(btnRow);
+        list.appendChild(card);
+      }
+    }
+
+    $('add-channel').addEventListener('click', () => {
+      const name = $('new-name').value.trim();
+      const id = $('new-id').value.trim();
+      const guild = $('new-guild').value.trim();
+      const err = $('add-error');
+      err.innerHTML = '';
+      if (!name) { err.innerHTML = '<div class="toast error">friendly name required</div>'; return; }
+      if (!/^\d{1,30}$/.test(id)) { err.innerHTML = '<div class="toast error">channel id must be all digits</div>'; return; }
+      if (state.channels.some((c) => c.id === id)) {
+        err.innerHTML = '<div class="toast error">that channel id is already saved</div>';
+        return;
+      }
+      state.channels.push({ id, name, guild });
+      saveState();
+      $('new-name').value = '';
+      $('new-id').value = '';
+      $('new-guild').value = '';
+      renderChannels();
+    });
+
+    $('lookup-channel').addEventListener('click', async () => {
+      const id = $('new-id').value.trim();
+      const err = $('add-error');
+      err.innerHTML = '';
+      if (!state.token) { err.innerHTML = '<div class="toast error">set your token first</div>'; return; }
+      if (!/^\d{1,30}$/.test(id)) { err.innerHTML = '<div class="toast error">enter a channel id first</div>'; return; }
+      $('lookup-channel').disabled = true;
+      $('lookup-channel').textContent = 'looking up...';
+      try {
+        const res = await fetch('/api/channel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: state.token, channel_id: id }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.detail || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.name) $('new-name').value = data.name;
+        if (data.guild_id) $('new-guild').value = data.guild_id;
+        err.innerHTML = `<div class="toast success">found: #${data.name || '(no name)'}</div>`;
+      } catch (e) {
+        err.innerHTML = `<div class="toast error">${e.message}</div>`;
+      } finally {
+        $('lookup-channel').disabled = false;
+        $('lookup-channel').textContent = 'look up name from id';
+      }
+    });
+
+    // ---- export run ----
+    async function runExport(channel, afterId) {
+      if (!state.token) {
+        alert('set your discord token first');
+        return;
+      }
+      if (currentRun) return;
+
+      const cancelToken = { cancelled: false };
+      currentRun = cancelToken;
+
+      const panel = $('progress');
+      const title = $('progress-title');
+      const status = $('progress-status');
+      const toast = $('progress-toast');
+      panel.classList.remove('hidden');
+      toast.innerHTML = '';
+      title.textContent = `fetching #${channel.name}`;
+      status.textContent = afterId ? 'starting from saved checkpoint…' : 'starting from scratch…';
+
+      const messages = [];
+      let cursor = afterId; // null = fetch most recent, paginate backward via `before`
+      let highestSeen = afterId;
+
+      try {
+        if (cursor) {
+          // Forward mode: paginate using `after`, ascending in time.
+          while (true) {
+            if (cancelToken.cancelled) throw new Error('cancelled');
+            const batch = await fetchPage(channel.id, { after: cursor });
+            if (batch.length === 0) break;
+            messages.push(...batch);
+            const pageMax = batch.reduce((acc, m) => maxSnowflake(acc, m.id), null);
+            highestSeen = maxSnowflake(highestSeen, pageMax);
+            if (pageMax === cursor) break; // safety: no progress
+            cursor = pageMax;
+            status.textContent = `${messages.length} message${messages.length === 1 ? '' : 's'} so far (page ending ${formatDate(snowflakeToDate(pageMax))})`;
+            if (batch.length < 100) break;
+          }
+        } else {
+          // Backward mode: start at most recent, paginate via `before`.
+          let before = null;
+          while (true) {
+            if (cancelToken.cancelled) throw new Error('cancelled');
+            const params = before ? { before } : {};
+            const batch = await fetchPage(channel.id, params);
+            if (batch.length === 0) break;
+            messages.push(...batch);
+            const pageMin = batch.reduce((acc, m) => (acc === null || BigInt(m.id) < BigInt(acc) ? m.id : acc), null);
+            const pageMax = batch.reduce((acc, m) => maxSnowflake(acc, m.id), null);
+            highestSeen = maxSnowflake(highestSeen, pageMax);
+            before = pageMin;
+            status.textContent = `${messages.length} message${messages.length === 1 ? '' : 's'} so far (back to ${formatDate(snowflakeToDate(pageMin))})`;
+            if (batch.length < 100) break;
+          }
+        }
+
+        if (messages.length === 0) {
+          toast.innerHTML = '<div class="toast success">no new messages since last run</div>';
+          if (highestSeen) {
+            // record the "we checked" run even with 0 messages
+            state.history[channel.id] = {
+              last_message_id: highestSeen,
+              ran_at: new Date().toISOString(),
+              count: 0,
+            };
+            saveState();
+            renderChannels();
+          }
+          return;
+        }
+
+        // de-dupe by id, sort oldest-first for friendlier LLM reading
+        const dedup = new Map();
+        for (const m of messages) dedup.set(m.id, m);
+        const sorted = [...dedup.values()].sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? -1 : 1));
+
+        const blob = new Blob([JSON.stringify(sorted, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const fname = `lurk-${channel.name}-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`;
+
+        state.history[channel.id] = {
+          last_message_id: maxSnowflake(highestSeen, sorted[sorted.length - 1].id),
+          ran_at: new Date().toISOString(),
+          count: sorted.length,
+        };
+        saveState();
+        renderChannels();
+
+        toast.innerHTML = `
+          <div class="toast success" style="display:flex;justify-content:space-between;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <span>${sorted.length} messages ready</span>
+            <span>
+              <a href="${url}" download="${fname}" class="btn primary" style="text-decoration:none;">download json</a>
+              <button class="btn" id="copy-json">copy</button>
+            </span>
+          </div>`;
+        $('copy-json').addEventListener('click', async () => {
+          await navigator.clipboard.writeText(JSON.stringify(sorted, null, 2));
+          $('copy-json').textContent = 'copied!';
+          setTimeout(() => { $('copy-json').textContent = 'copy'; }, 1500);
+        });
+        status.textContent = 'done.';
+      } catch (e) {
+        if (e.message === 'cancelled') {
+          toast.innerHTML = '<div class="toast error">cancelled</div>';
+        } else {
+          toast.innerHTML = `<div class="toast error">${e.message}</div>`;
+        }
+      } finally {
+        currentRun = null;
+        // leave the panel up so user can grab the result; replace bar with idle
+        document.querySelector('#progress .progress-bar').classList.remove('indeterminate');
+      }
+    }
+
+    async function fetchPage(channelId, params) {
+      const body = { token: state.token, channel_id: channelId, limit: 100, ...params };
+      const res = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        const m = (data.detail || '').match(/retry in ([\d.]+)/);
+        const wait = m ? parseFloat(m[1]) : 2;
+        await new Promise((r) => setTimeout(r, Math.max(wait, 1) * 1000));
+        return fetchPage(channelId, params); // retry once
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.detail || `HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    $('cancel-run').addEventListener('click', () => {
+      if (currentRun) currentRun.cancelled = true;
+      $('progress').classList.add('hidden');
+      document.querySelector('#progress .progress-bar').classList.add('indeterminate');
+    });
+
+    // ---- init ----
+    renderTokenSection();
+    renderChannels();
+  </script>
+</body>
+</html>
