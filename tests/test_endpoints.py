@@ -119,3 +119,15 @@ def test_channels_and_log_list_after_catchup(tmp_path, monkeypatch):
     log = client.get("/api/log").json()
     assert log[0]["channel_id"] == "55"
     assert log[0]["fetched"] == 1
+
+
+def test_export_rejects_traversal_ids(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    assert client.get("/api/export", params={"channel_id": "../state", "guild_id": "g1"}).status_code == 400
+    assert client.get("/api/export", params={"channel_id": "55", "guild_id": "../etc"}).status_code == 400
+
+
+def test_catchup_rejects_traversal_guild(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    r = client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "../evil"})
+    assert r.status_code == 400

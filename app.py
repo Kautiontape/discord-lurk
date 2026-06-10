@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -45,6 +46,14 @@ class CatchupRequest(BaseModel):
 
 def backfill_limit() -> int:
     return int(os.environ.get("LURK_BACKFILL_LIMIT", "200"))
+
+
+_SEGMENT_RE = re.compile(r"^[A-Za-z0-9_-]{1,30}$")
+
+
+def _validate_guild(guild_id: str) -> None:
+    if not _SEGMENT_RE.match(guild_id):
+        raise HTTPException(status_code=400, detail="invalid guild_id")
 
 
 def _validate(req_token: str, snowflakes: dict[str, Optional[str]]) -> None:
@@ -97,6 +106,7 @@ async def get_channel(req: ChannelRequest):
 @app.post("/api/catchup")
 async def catchup(req: CatchupRequest):
     _validate(req.token, {"channel_id": req.channel_id})
+    _validate_guild(req.guild_id)
     base = archive.data_dir()
     last_seen = archive.get_last_seen(base, req.channel_id)
     try:
@@ -135,6 +145,9 @@ async def catchup(req: CatchupRequest):
 
 @app.get("/api/export")
 async def export(channel_id: str, guild_id: str = "dm", scope: str = "all"):
+    if not SNOWFLAKE_RE.match(channel_id):
+        raise HTTPException(status_code=400, detail="invalid channel_id")
+    _validate_guild(guild_id)
     base = archive.data_dir()
     messages = archive.read_archive(base, guild_id, channel_id)
     if scope == "since":
