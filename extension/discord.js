@@ -1,11 +1,12 @@
-// Content script (isolated world) on discord.com. Adds a "capture from here"
-// affordance to messages: primarily as an item injected into Discord's own
-// right-click menu, falling back to a small hover button if that injection
-// can't be made to work. Either way it asks the background worker to catch up
-// from the chosen message and downloads the returned JSON.
+// Content script (isolated world) on discord.com. Two jobs:
+//   1. "capture from here" — adds an item to Discord's native right-click menu
+//      (hover-button fallback if injection can't land) that asks the background
+//      to catch up from the chosen message and downloads the returned JSON.
+//   2. a blue "caught up to here" divider — drawn as a fixed overlay tracking
+//      the last message lurk has archived for this channel.
 //
-// The token is NOT read here — the background worker reads it from the page's
-// MAIN world via chrome.scripting. This script only needs the DOM.
+// The token is NOT read here — the background reads it from the page's MAIN
+// world via chrome.scripting. This script only needs the DOM.
 (() => {
   if (window.__lurkHooked) return;
   window.__lurkHooked = true;
@@ -32,6 +33,10 @@
     return node && node.closest ? node.closest('[id^="chat-messages-"]') : null;
   }
 
+  function findMessageEl(id) {
+    return document.querySelector(`[id^="chat-messages-"][id$="-${id}"], [id="chat-messages-${id}"]`);
+  }
+
   // ---- primary path: inject into Discord's native context menu ----
   document.addEventListener(
     'contextmenu',
@@ -51,7 +56,7 @@
       const menus = document.querySelectorAll('[role="menu"]');
       const menu = menus[menus.length - 1];
       if (menu) {
-        if (!menu.querySelector('[data-lurk-item]')) injectMenuItem(menu, target);
+        injectMenuItem(menu, target);
         menuInjectionWorks = true;
         return;
       }
@@ -66,30 +71,28 @@
   }
 
   function injectMenuItem(menu, target) {
+    if (menu.querySelector('[data-lurk-item]')) return;
+    const sample = menu.querySelector('[role="menuitem"]');
     const item = document.createElement('div');
     item.setAttribute('role', 'menuitem');
     item.setAttribute('data-lurk-item', '1');
-    item.textContent = '⟳  lurk: capture from here';
-    Object.assign(item.style, {
-      padding: '6px 8px', margin: '2px 8px', borderRadius: '4px',
-      fontSize: '14px', fontWeight: '500', color: '#dbdee1',
-      cursor: 'pointer', userSelect: 'none',
-    });
-    item.addEventListener('mouseenter', () => {
-      item.style.background = '#5865f2';
-      item.style.color = '#fff';
-    });
-    item.addEventListener('mouseleave', () => {
-      item.style.background = 'transparent';
-      item.style.color = '#dbdee1';
-    });
+    if (sample) item.className = sample.className; // inherit Discord's native item look
+    item.textContent = 'lurk: capture from here';
+    item.style.whiteSpace = 'nowrap';
+    item.style.cursor = 'pointer';
+    // Explicit highlight too, for builds where the hover style is JS-driven.
+    item.addEventListener('mouseenter', () => { item.style.background = '#4752c4'; item.style.color = '#fff'; });
+    item.addEventListener('mouseleave', () => { item.style.background = ''; item.style.color = ''; });
     item.addEventListener('click', (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
       closeMenus();
       captureFrom(target);
     });
-    menu.insertBefore(item, menu.firstChild);
+    // First actual item: insert before the first existing menuitem (i.e. just
+    // under the emoji quick-react bar), within the same group container.
+    if (sample && sample.parentNode) sample.parentNode.insertBefore(item, sample);
+    else menu.insertBefore(item, menu.firstChild);
   }
 
   function closeMenus() {
@@ -112,7 +115,7 @@
     if (!parsed) return;
     if (getComputedStyle(msgEl).position === 'static') msgEl.style.position = 'relative';
     const btn = document.createElement('button');
-    btn.textContent = '⟳ from here';
+    btn.textContent = '↓ from here';
     btn.title = 'lurk: capture from this message';
     Object.assign(btn.style, {
       position: 'absolute', top: '2px', right: '52px', zIndex: '1',
@@ -198,4 +201,87 @@
     if (toastTimer) clearTimeout(toastTimer);
     if (autoHideMs > 0) toastTimer = setTimeout(() => { if (toastEl) toastEl.style.opacity = '0'; }, autoHideMs);
   }
+
+  // ---- "caught up to here" divider (fixed overlay over the boundary message) ----
+  let lastSeenId = null;
+  let lastSeenChannel = null;
+  let overlayEl = null;
+
+  function currentChannelId() {
+    const m = location.pathname.match(/^\/channels\/(?:@me|\d+)\/(\d+)/);
+    return m ? m[1] : null;
+  }
+
+  function ensureOverlay() {
+    if (overlayEl) return overlayEl;
+    overlayEl = document.createElement('div');
+    overlayEl.className = 'lurk-divider';
+    Object.assign(overlayEl.style, {
+      position: 'fixed', height: '0', borderTop: '2px solid #3BA9FF',
+      pointerEvents: 'none', zIndex: '999', display: 'none',
+    });
+    const tag = document.createElement('span');
+    tag.textContent = 'caught up';
+    Object.assign(tag.style, {
+      position: 'absolute', right: '8px', top: '-9px',
+      background: 'rgba(59,169,255,0.22)', color: '#bfe2ff',
+      font: '700 10px/1 system-ui, sans-serif', padding: '3px 7px',
+      borderRadius: '8px', letterSpacing: '.04em', textTransform: 'uppercase',
+    });
+    overlayEl.appendChild(tag);
+    document.body.appendChild(overlayEl);
+    return overlayEl;
+  }
+
+  function hideOverlay() {
+    if (overlayEl) overlayEl.style.display = 'none';
+  }
+
+  function positionOverlay() {
+    if (!lastSeenId || currentChannelId() !== lastSeenChannel) return hideOverlay();
+    const el = findMessageEl(lastSeenId);
+    if (!el) return hideOverlay();
+    const r = el.getBoundingClientRect();
+    if (r.bottom < 56 || r.bottom > window.innerHeight) return hideOverlay(); // off-screen
+    const o = ensureOverlay();
+    o.style.display = 'block';
+    o.style.left = `${r.left}px`;
+    o.style.width = `${r.width}px`;
+    o.style.top = `${r.bottom - 1}px`;
+  }
+
+  async function refreshLastSeen() {
+    const ch = currentChannelId();
+    if (!ch) { lastSeenChannel = null; lastSeenId = null; hideOverlay(); return; }
+    if (ch === lastSeenChannel) return; // already fetched for this channel
+    lastSeenChannel = ch;
+    lastSeenId = null;
+    hideOverlay();
+    try {
+      const res = await chrome.runtime.sendMessage({ type: 'LURK_LAST_SEEN', channelId: ch });
+      if (currentChannelId() === ch && res && res.ok) lastSeenId = res.lastSeenId || null;
+    } catch (e) { /* ignore */ }
+  }
+
+  let rafPending = false;
+  function schedulePosition() {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(() => { rafPending = false; positionOverlay(); });
+  }
+  window.addEventListener('scroll', schedulePosition, true); // capture: catches the inner scroller
+  window.addEventListener('resize', schedulePosition);
+
+  let tickScheduled = false;
+  function scheduleTick() {
+    if (tickScheduled) return;
+    tickScheduled = true;
+    setTimeout(async () => {
+      tickScheduled = false;
+      await refreshLastSeen(); // refetch when the channel changes
+      positionOverlay();
+    }, 200);
+  }
+  new MutationObserver(scheduleTick).observe(document.body, { childList: true, subtree: true });
+  scheduleTick();
 })();

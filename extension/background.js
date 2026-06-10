@@ -130,6 +130,22 @@ async function handleCatchup(tabId, { after = null, channelId = null } = {}) {
   }
 }
 
+// Read-only lookup of the catch-up cursor for a channel, used by the content
+// script to draw its "caught up to here" divider.
+async function handleLastSeen(channelId) {
+  try {
+    const cfg = await chrome.storage.sync.get({ endpoint: DEFAULT_ENDPOINT });
+    const base = normalizeEndpoint(cfg.endpoint);
+    if (!base) return { ok: false };
+    const res = await fetch(`${base}/api/state?channel_id=${encodeURIComponent(channelId)}`);
+    if (!res.ok) return { ok: false };
+    const data = await res.json();
+    return { ok: true, lastSeenId: data.last_seen_id || null };
+  } catch (e) {
+    return { ok: false };
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'LURK_CATCHUP') {
     handleCatchup(msg.tabId).then(sendResponse);
@@ -138,6 +154,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'LURK_CAPTURE_FROM') {
     const tabId = (sender.tab && sender.tab.id) || msg.tabId;
     handleCatchup(tabId, { after: msg.messageId, channelId: msg.channelId }).then(sendResponse);
+    return true;
+  }
+  if (msg && msg.type === 'LURK_LAST_SEEN') {
+    handleLastSeen(msg.channelId).then(sendResponse);
     return true;
   }
 });
