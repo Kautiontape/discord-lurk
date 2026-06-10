@@ -375,10 +375,36 @@
     @media (min-width: 640px) {
       .channel-grid { grid-template-columns: 1fr 1fr; }
     }
+
+    .consent-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.78);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+    }
+    .consent-card {
+      background: var(--bg-card); border: 1px solid var(--red);
+      border-radius: 8px; padding: 1.75rem; max-width: 540px;
+    }
+    .consent-card h2 {
+      font-family: var(--mono); color: var(--red);
+      font-size: 1rem; margin-bottom: 1rem; letter-spacing: 0.02em;
+    }
+    .consent-card p { font-size: 0.9rem; margin-bottom: 0.9rem; }
+    .consent-card .ack { display: flex; gap: 0.6rem; align-items: flex-start; margin: 1.1rem 0; }
+    .consent-card .ack input { margin-top: 0.2rem; }
+    .consent-banner {
+      background: rgba(255,82,82,0.08); border: 1px solid rgba(255,82,82,0.3);
+      border-radius: 6px; padding: 0.6rem 0.85rem; margin-bottom: 1.25rem;
+      font-family: var(--mono); font-size: 0.72rem; color: var(--red);
+    }
   </style>
 </head>
 <body>
   <div class="page">
+    <div id="consent-banner" class="consent-banner hidden">
+      ⚠ using a user token is a self-bot — against Discord's ToS and can get your account banned. lurk runs on your own host and never stores the token.
+    </div>
     <header>
       <div class="crumb"><a href="https://kautiontape.com">kautiontape</a> / lurk</div>
       <div class="brand">
@@ -478,6 +504,19 @@
     <footer>
       <p>state lives in this browser only · <a href="https://kautiontape.com">← kautiontape</a></p>
     </footer>
+
+    <div id="consent-overlay" class="consent-overlay hidden">
+      <div class="consent-card">
+        <h2>read this before you continue</h2>
+        <p>lurk reads Discord with <strong>your own user token</strong>. Automating a user account this way is a "self-bot," which <strong>violates Discord's Terms of Service and can get your account banned.</strong></p>
+        <p>lurk runs on the host you point it at (your machine or your own server). Your token is used only to fetch messages and is <strong>never written to disk</strong>. Exported messages are stored locally so you can hand them to an LLM yourself.</p>
+        <label class="ack">
+          <input type="checkbox" id="consent-check">
+          <span>I understand this risks my Discord account and I accept that risk.</span>
+        </label>
+        <button class="btn primary" id="consent-accept" disabled>I understand — continue</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -874,7 +913,22 @@
       document.querySelector('#progress .progress-bar').classList.add('indeterminate');
     });
 
+    const CONSENT_KEY = 'lurk.consent.v1';
+    function renderConsent() {
+      const accepted = localStorage.getItem(CONSENT_KEY) === '1';
+      $('consent-overlay').classList.toggle('hidden', accepted);
+      $('consent-banner').classList.toggle('hidden', !accepted);
+    }
+    $('consent-check').addEventListener('change', (e) => {
+      $('consent-accept').disabled = !e.target.checked;
+    });
+    $('consent-accept').addEventListener('click', () => {
+      localStorage.setItem(CONSENT_KEY, '1');
+      renderConsent();
+    });
+
     // ---- init ----
+    renderConsent();
     renderTokenSection();
     renderChannels();
   </script>
