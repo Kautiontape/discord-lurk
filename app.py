@@ -1,3 +1,5 @@
+import os
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
@@ -6,6 +8,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+import archive
+import clean
 import discord_api
 from discord_api import SNOWFLAKE_RE, TOKEN_RE
 
@@ -30,6 +34,16 @@ class MessagesRequest(BaseModel):
 class ChannelRequest(BaseModel):
     token: str = Field(min_length=20, max_length=200)
     channel_id: str = Field(min_length=1, max_length=30)
+
+
+class CatchupRequest(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    channel_id: str = Field(min_length=1, max_length=30)
+    guild_id: str = Field(default="dm", max_length=30)
+
+
+def backfill_limit() -> int:
+    return int(os.environ.get("LURK_BACKFILL_LIMIT", "200"))
 
 
 def _validate(req_token: str, snowflakes: dict[str, Optional[str]]) -> None:
@@ -76,6 +90,45 @@ async def get_channel(req: ChannelRequest):
         "name": data.get("name"),
         "guild_id": data.get("guild_id"),
         "type": data.get("type"),
+    }
+
+
+@app.post("/api/catchup")
+async def catchup(req: CatchupRequest):
+    _validate(req.token, {"channel_id": req.channel_id})
+    base = archive.data_dir()
+    last_seen = archive.get_last_seen(base, req.channel_id)
+    try:
+        if last_seen:
+            raw = await discord_api.fetch_after(req.token, req.channel_id, last_seen)
+        else:
+            raw = await discord_api.fetch_recent(req.token, req.channel_id, backfill_limit())
+    except discord_api.DiscordError as e:
+        raise _as_http(e)
+
+    cleaned = [clean.clean_message(m) for m in raw]
+    appended = archive.append_messages(base, req.guild_id, req.channel_id, cleaned)
+    when = datetime.now(timezone.utc).isoformat()
+    if cleaned:
+        archive.update_pull(
+            base, req.channel_id,
+            last_seen_id=cleaned[-1]["id"],
+            first_added_id=cleaned[0]["id"],
+            when=when,
+        )
+    archive.register_channel(base, {"id": req.channel_id, "guild_id": req.guild_id})
+    archive.append_log(base, {
+        "at": when, "channel_id": req.channel_id, "guild_id": req.guild_id,
+        "fetched": len(cleaned), "appended": appended,
+    })
+    return {
+        "channel_id": req.channel_id,
+        "guild_id": req.guild_id,
+        "fetched": len(cleaned),
+        "appended": appended,
+        "total": len(archive.read_archive(base, req.guild_id, req.channel_id)),
+        "last_seen_id": archive.get_last_seen(base, req.channel_id),
+        "messages": cleaned,
     }
 
 
