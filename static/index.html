@@ -375,36 +375,10 @@
     @media (min-width: 640px) {
       .channel-grid { grid-template-columns: 1fr 1fr; }
     }
-
-    .consent-overlay {
-      position: fixed; inset: 0; z-index: 100;
-      background: rgba(0,0,0,0.78);
-      display: flex; align-items: center; justify-content: center;
-      padding: 1.5rem;
-    }
-    .consent-card {
-      background: var(--bg-card); border: 1px solid var(--red);
-      border-radius: 8px; padding: 1.75rem; max-width: 540px;
-    }
-    .consent-card h2 {
-      font-family: var(--mono); color: var(--red);
-      font-size: 1rem; margin-bottom: 1rem; letter-spacing: 0.02em;
-    }
-    .consent-card p { font-size: 0.9rem; margin-bottom: 0.9rem; }
-    .consent-card .ack { display: flex; gap: 0.6rem; align-items: flex-start; margin: 1.1rem 0; }
-    .consent-card .ack input { margin-top: 0.2rem; }
-    .consent-banner {
-      background: rgba(255,82,82,0.08); border: 1px solid rgba(255,82,82,0.3);
-      border-radius: 6px; padding: 0.6rem 0.85rem; margin-bottom: 1.25rem;
-      font-family: var(--mono); font-size: 0.72rem; color: var(--red);
-    }
   </style>
 </head>
 <body>
   <div class="page">
-    <div id="consent-banner" class="consent-banner hidden">
-      ⚠ using a user token is a self-bot — against Discord's ToS and can get your account banned. lurk runs on your own host and never stores the token.
-    </div>
     <header>
       <div class="crumb"><a href="https://kautiontape.com">kautiontape</a> / lurk</div>
       <div class="brand">
@@ -511,19 +485,6 @@
     <footer>
       <p>state lives in this browser only · <a href="https://kautiontape.com">← kautiontape</a></p>
     </footer>
-
-    <div id="consent-overlay" class="consent-overlay hidden">
-      <div class="consent-card">
-        <h2>read this before you continue</h2>
-        <p>lurk reads Discord with <strong>your own user token</strong>. Automating a user account this way is a "self-bot," which <strong>violates Discord's Terms of Service and can get your account banned.</strong></p>
-        <p>lurk runs on the host you point it at (your machine or your own server). Your token is used only to fetch messages and is <strong>never written to disk</strong>. Exported messages are stored locally so you can hand them to an LLM yourself.</p>
-        <label class="ack">
-          <input type="checkbox" id="consent-check">
-          <span>I understand this risks my Discord account and I accept that risk.</span>
-        </label>
-        <button class="btn primary" id="consent-accept" disabled>I understand — continue</button>
-      </div>
-    </div>
   </div>
 
   <script>
@@ -545,7 +506,9 @@
     }
 
     let state = loadState();
+    if (!state.exports) state.exports = {}; // per-channel last-exported message id
     let currentRun = null;
+    let serverChannels = []; // from /api/channels, enriched with last_seen
 
     // ---- helpers ----
     const $ = (id) => document.getElementById(id);
@@ -632,99 +595,254 @@
     });
 
     // ---- channels UI ----
+    // Channels come from two places: the server archive (populated by the
+    // extension, the source of truth) and locally-added ones. Merge by id so a
+    // channel you caught up on shows once, enriched with its server guild id and
+    // catch-up cursor.
+    function mergedChannels() {
+      const byId = new Map();
+      for (const c of state.channels) {
+        byId.set(c.id, { id: c.id, name: c.name, guild: c.guild, local: true });
+      }
+      for (const s of serverChannels) {
+        const e = byId.get(s.id) || { id: s.id };
+        e.server = true;
+        e.guildId = s.guild_id;
+        e.lastSeenId = s.last_seen_id || null;
+        if (!e.name && s.name) e.name = s.name;
+        if (!e.guild && s.guild_name) e.guild = s.guild_name;
+        byId.set(s.id, e);
+      }
+      return [...byId.values()];
+    }
+
+    async function fetchServerChannels() {
+      try {
+        const res = await fetch('/api/channels');
+        if (!res.ok) return;
+        const chans = await res.json();
+        serverChannels = await Promise.all(chans.map(async (c) => {
+          try {
+            const s = await fetch(`/api/state?channel_id=${encodeURIComponent(c.id)}`);
+            if (s.ok) c.last_seen_id = (await s.json()).last_seen_id;
+          } catch (e) { /* ignore */ }
+          return c;
+        }));
+      } catch (e) {
+        serverChannels = [];
+      }
+    }
+
+    function downloadMessages(messages, ch) {
+      const safe = (ch.name || ch.id).replace(/[^\w.-]+/g, '-');
+      const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const blob = new Blob([JSON.stringify(messages, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `lurk-${safe}-${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+
+    // Token-free export straight from the server archive. mode 'all' downloads
+    // everything; 'since' downloads only what's newer than this browser's last
+    // export of the channel, then advances that marker (continue-from-last).
+    async function exportArchive(ch, mode) {
+      try {
+        const res = await fetch(`/api/export?channel_id=${ch.id}&guild_id=${encodeURIComponent(ch.guildId)}&scope=all`);
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          throw new Error(d.detail || `HTTP ${res.status}`);
+        }
+        let messages = (await res.json()).messages || [];
+        const marker = state.exports[ch.id];
+        if (mode === 'since' && marker) {
+          messages = messages.filter((m) => BigInt(m.id) > BigInt(marker));
+        }
+        if (!messages.length) {
+          alert(mode === 'since'
+            ? 'No new messages since your last export. Catch up with the extension to pull more.'
+            : 'Nothing archived for this channel yet — catch up with the extension first.');
+          return;
+        }
+        downloadMessages(messages, ch);
+        const maxId = messages.reduce((acc, m) => maxSnowflake(acc, m.id), null);
+        state.exports[ch.id] = maxSnowflake(state.exports[ch.id], maxId);
+        saveState();
+        renderChannels();
+      } catch (e) {
+        alert('Export failed: ' + e.message);
+      }
+    }
+
     function renderChannels() {
       const list = $('channels-list');
       list.innerHTML = '';
-      $('channel-count').textContent = state.channels.length;
+      const channels = mergedChannels();
+      $('channel-count').textContent = channels.length;
 
-      if (state.channels.length === 0) {
+      if (channels.length === 0) {
         const empty = document.createElement('div');
         empty.className = 'empty-state';
         empty.style.gridColumn = '1 / -1';
-        empty.textContent = 'no channels yet — add one below.';
+        empty.textContent = 'no channels yet — catch up on one with the extension, or add one below.';
         list.appendChild(empty);
         return;
       }
 
-      for (const ch of state.channels) {
-        const hist = state.history[ch.id];
+      for (const ch of channels) {
         const card = document.createElement('div');
         card.className = 'channel-card';
+        card.dataset.channelId = ch.id;
 
         const top = document.createElement('div');
         top.className = 'top';
         const left = document.createElement('div');
         const name = document.createElement('div');
         name.className = 'channel-name';
-        name.textContent = ch.name;
+        name.textContent = ch.name || ch.id;
         const meta = document.createElement('div');
         meta.className = 'channel-meta';
         const guildPart = ch.guild ? ch.guild + ' · ' : '';
         meta.innerHTML = guildPart + '<span class="id">' + ch.id + '</span>';
         left.appendChild(name);
         left.appendChild(meta);
-        const del = document.createElement('button');
-        del.className = 'btn subtle danger';
-        del.textContent = '✕';
-        del.title = 'remove channel';
-        del.addEventListener('click', () => {
-          if (!confirm(`remove "${ch.name}" from this browser?`)) return;
-          state.channels = state.channels.filter((c) => c.id !== ch.id);
-          delete state.history[ch.id];
-          saveState();
-          renderChannels();
-        });
         top.appendChild(left);
-        top.appendChild(del);
-
-        const histLine = document.createElement('div');
-        if (hist) {
-          const d = new Date(hist.ran_at);
-          const lastMsgDate = snowflakeToDate(hist.last_message_id);
-          histLine.className = 'channel-history';
-          histLine.innerHTML = `last run ${formatAgo(d)} · ${hist.count} msg${hist.count === 1 ? '' : 's'} · up to ${formatDate(lastMsgDate)}`;
-        } else {
-          histLine.className = 'channel-history empty';
-          histLine.textContent = 'never exported';
+        if (ch.local) {
+          const del = document.createElement('button');
+          del.className = 'btn subtle danger';
+          del.textContent = '✕';
+          del.title = 'remove channel';
+          del.addEventListener('click', () => {
+            if (!confirm(`remove "${ch.name || ch.id}" from this browser?`)) return;
+            state.channels = state.channels.filter((c) => c.id !== ch.id);
+            delete state.history[ch.id];
+            saveState();
+            renderChannels();
+          });
+          top.appendChild(del);
         }
-
-        const btnRow = document.createElement('div');
-        btnRow.className = 'btn-row';
-        if (hist) {
-          const cont = document.createElement('button');
-          cont.className = 'btn primary';
-          cont.textContent = 'continue from last run';
-          cont.addEventListener('click', () => runExport(ch, hist.last_message_id));
-          btnRow.appendChild(cont);
-        }
-        const full = document.createElement('button');
-        full.className = 'btn';
-        full.textContent = hist ? 'full re-export' : 'export all';
-        full.addEventListener('click', () => {
-          if (hist && !confirm('this will fetch the whole channel from the beginning. continue?')) return;
-          runExport(ch, null);
-        });
-        btnRow.appendChild(full);
-
-        const custom = document.createElement('button');
-        custom.className = 'btn subtle';
-        custom.textContent = 'from message id…';
-        custom.addEventListener('click', () => {
-          const id = prompt('start after this message id (exclusive):');
-          if (!id) return;
-          if (!/^\d{1,30}$/.test(id.trim())) {
-            alert('message id must be all digits');
-            return;
-          }
-          runExport(ch, id.trim());
-        });
-        btnRow.appendChild(custom);
-
         card.appendChild(top);
-        card.appendChild(histLine);
-        card.appendChild(btnRow);
+
+        if (ch.server && ch.guildId) {
+          renderServerChannel(card, ch);
+        } else {
+          renderLocalChannel(card, ch);
+        }
         list.appendChild(card);
       }
+    }
+
+    // A server (archived) channel: token-free exports from the archive.
+    function renderServerChannel(card, ch) {
+      const marker = state.exports[ch.id];
+      const caughtUp = ch.lastSeenId ? formatDate(snowflakeToDate(ch.lastSeenId)) : null;
+      const exported = marker ? formatDate(snowflakeToDate(marker)) : null;
+      const hasNew = ch.lastSeenId && (!marker || BigInt(ch.lastSeenId) > BigInt(marker));
+
+      const status = document.createElement('div');
+      if (caughtUp) {
+        status.className = 'channel-history' + (hasNew ? '' : ' empty');
+        status.innerHTML = `caught up to ${caughtUp}` + (exported ? ` · exported through ${exported}` : ' · not exported yet');
+      } else {
+        status.className = 'channel-history empty';
+        status.textContent = 'in your archive';
+      }
+      card.appendChild(status);
+
+      const btnRow = document.createElement('div');
+      btnRow.className = 'btn-row';
+      const cont = document.createElement('button');
+      cont.className = 'btn primary';
+      cont.textContent = 'export new since last';
+      cont.disabled = !!marker && !hasNew;
+      cont.addEventListener('click', () => exportArchive(ch, 'since'));
+      btnRow.appendChild(cont);
+      const all = document.createElement('button');
+      all.className = 'btn';
+      all.textContent = 'export all';
+      all.addEventListener('click', () => exportArchive(ch, 'all'));
+      btnRow.appendChild(all);
+      card.appendChild(btnRow);
+
+      const adv = document.createElement('details');
+      adv.className = 'help';
+      const sum = document.createElement('summary');
+      sum.textContent = 'fetch older history from Discord (needs token)';
+      adv.appendChild(sum);
+      const advRow = document.createElement('div');
+      advRow.className = 'btn-row';
+      advRow.style.marginTop = '0.5rem';
+      const full = document.createElement('button');
+      full.className = 'btn subtle';
+      full.textContent = 'full pull from Discord';
+      full.addEventListener('click', () => runExport(ch, null));
+      advRow.appendChild(full);
+      adv.appendChild(advRow);
+      card.appendChild(adv);
+    }
+
+    // A locally-added channel with no server archive: the original client-side
+    // pull straight from Discord (needs a pasted token).
+    function renderLocalChannel(card, ch) {
+      const hist = state.history[ch.id];
+      const histLine = document.createElement('div');
+      if (hist) {
+        const d = new Date(hist.ran_at);
+        const lastMsgDate = snowflakeToDate(hist.last_message_id);
+        histLine.className = 'channel-history';
+        histLine.innerHTML = `last run ${formatAgo(d)} · ${hist.count} msg${hist.count === 1 ? '' : 's'} · up to ${formatDate(lastMsgDate)}`;
+      } else {
+        histLine.className = 'channel-history empty';
+        histLine.textContent = 'never exported';
+      }
+      card.appendChild(histLine);
+
+      const btnRow = document.createElement('div');
+      btnRow.className = 'btn-row';
+      if (hist) {
+        const cont = document.createElement('button');
+        cont.className = 'btn primary';
+        cont.textContent = 'continue from last run';
+        cont.addEventListener('click', () => runExport(ch, hist.last_message_id));
+        btnRow.appendChild(cont);
+      }
+      const full = document.createElement('button');
+      full.className = 'btn';
+      full.textContent = hist ? 'full re-export' : 'export all';
+      full.addEventListener('click', () => {
+        if (hist && !confirm('this will fetch the whole channel from the beginning. continue?')) return;
+        runExport(ch, null);
+      });
+      btnRow.appendChild(full);
+      const custom = document.createElement('button');
+      custom.className = 'btn subtle';
+      custom.textContent = 'from message id…';
+      custom.addEventListener('click', () => {
+        const id = prompt('start after this message id (exclusive):');
+        if (!id) return;
+        if (!/^\d{1,30}$/.test(id.trim())) {
+          alert('message id must be all digits');
+          return;
+        }
+        runExport(ch, id.trim());
+      });
+      btnRow.appendChild(custom);
+      card.appendChild(btnRow);
+    }
+
+    function focusChannelFromUrl() {
+      const id = new URLSearchParams(location.search).get('channel');
+      if (!id) return;
+      const card = document.querySelector(`[data-channel-id="${id}"]`);
+      if (!card) return;
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      card.style.outline = '2px solid var(--yellow)';
+      card.style.outlineOffset = '2px';
+      setTimeout(() => { card.style.outline = ''; }, 2500);
     }
 
     $('add-channel').addEventListener('click', () => {
@@ -920,20 +1038,6 @@
       document.querySelector('#progress .progress-bar').classList.add('indeterminate');
     });
 
-    const CONSENT_KEY = 'lurk.consent.v1';
-    function renderConsent() {
-      const accepted = localStorage.getItem(CONSENT_KEY) === '1';
-      $('consent-overlay').classList.toggle('hidden', accepted);
-      $('consent-banner').classList.toggle('hidden', !accepted);
-    }
-    $('consent-check').addEventListener('change', (e) => {
-      $('consent-accept').disabled = !e.target.checked;
-    });
-    $('consent-accept').addEventListener('click', () => {
-      localStorage.setItem(CONSENT_KEY, '1');
-      renderConsent();
-    });
-
     async function renderLog() {
       const box = $('log-list');
       try {
@@ -953,9 +1057,9 @@
     $('refresh-log').addEventListener('click', renderLog);
 
     // ---- init ----
-    renderConsent();
     renderTokenSection();
-    renderChannels();
+    renderChannels(); // local channels immediately
+    fetchServerChannels().then(() => { renderChannels(); focusChannelFromUrl(); });
     renderLog();
   </script>
 </body>
