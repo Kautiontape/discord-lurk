@@ -4,4 +4,8 @@ services:
     container_name: discord-lurk
     ports:
       - "127.0.0.1:8111:8000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - LURK_DATA_DIR=/app/data
     restart: always

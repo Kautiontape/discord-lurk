@@ -3,3 +3,8 @@ __pycache__
 .git
 .venv
 venv
+data
+tests
+.pytest_cache
+docs
+*.md
