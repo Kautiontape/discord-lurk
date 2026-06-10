@@ -1,17 +1,22 @@
-import re
 from typing import Optional
 
-import httpx
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-DISCORD_API = "https://discord.com/api/v10"
-SNOWFLAKE_RE = re.compile(r"^\d{1,30}$")
-TOKEN_RE = re.compile(r"^[A-Za-z0-9._\-]{20,200}$")
+import discord_api
+from discord_api import SNOWFLAKE_RE, TOKEN_RE
 
 app = FastAPI(title="lurk", docs_url=None, redoc_url=None, openapi_url=None)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"^chrome-extension://.*$|^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
 
 
 class MessagesRequest(BaseModel):
@@ -35,56 +40,37 @@ def _validate(req_token: str, snowflakes: dict[str, Optional[str]]) -> None:
             raise HTTPException(status_code=400, detail=f"invalid {name}")
 
 
-def _discord_error(resp: httpx.Response) -> HTTPException:
-    if resp.status_code == 401:
-        return HTTPException(status_code=401, detail="Discord rejected the token")
-    if resp.status_code == 403:
-        return HTTPException(status_code=403, detail="no access to that channel")
-    if resp.status_code == 404:
-        return HTTPException(status_code=404, detail="channel not found")
-    if resp.status_code == 429:
-        retry = resp.headers.get("Retry-After", "1")
-        return HTTPException(status_code=429, detail=f"rate-limited by Discord, retry in {retry}s")
-    return HTTPException(status_code=502, detail=f"Discord returned HTTP {resp.status_code}")
+def _as_http(e: discord_api.DiscordError) -> HTTPException:
+    return HTTPException(status_code=e.status_code, detail=e.detail)
 
 
 @app.post("/api/messages")
 async def get_messages(req: MessagesRequest):
     _validate(req.token, {"channel_id": req.channel_id, "after": req.after, "before": req.before})
-
-    params: dict[str, str | int] = {"limit": req.limit}
+    params: dict = {"limit": req.limit}
     if req.after:
         params["after"] = req.after
     if req.before:
         params["before"] = req.before
-
+    import httpx
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(
-            f"{DISCORD_API}/channels/{req.channel_id}/messages",
+            f"{discord_api.DISCORD_API}/channels/{req.channel_id}/messages",
             params=params,
             headers={"Authorization": req.token},
         )
-
     if resp.status_code != 200:
-        raise _discord_error(resp)
-
+        raise _as_http(discord_api.error_for(resp))
     return JSONResponse(resp.json())
 
 
 @app.post("/api/channel")
 async def get_channel(req: ChannelRequest):
     _validate(req.token, {"channel_id": req.channel_id})
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.get(
-            f"{DISCORD_API}/channels/{req.channel_id}",
-            headers={"Authorization": req.token},
-        )
-
-    if resp.status_code != 200:
-        raise _discord_error(resp)
-
-    data = resp.json()
+    try:
+        data = await discord_api.get_channel(req.token, req.channel_id)
+    except discord_api.DiscordError as e:
+        raise _as_http(e)
     return {
         "id": data.get("id"),
         "name": data.get("name"),
