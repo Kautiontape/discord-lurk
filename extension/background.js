@@ -62,7 +62,7 @@ function lurkReadToken() {
   return null;
 }
 
-async function handleCatchup(tabId) {
+async function handleCatchup(tabId, { after = null, channelId = null } = {}) {
   const cfg = await chrome.storage.sync.get({ endpoint: DEFAULT_ENDPOINT });
   const url = catchupUrl(cfg.endpoint);
   if (!url) {
@@ -76,7 +76,12 @@ async function handleCatchup(tabId) {
     return { ok: false, error: 'Could not read the Discord tab. Reload discord.com and try again.' };
   }
   const parsed = parseChannelUrl(tab.url || '');
-  if (!parsed) {
+  // For a from-here capture the content script passes the message's own channel
+  // id (correct even in threads/search); otherwise use the viewed channel. The
+  // guild only comes from the URL, so fall back to "dm" if it isn't a channel URL.
+  const channel = channelId || (parsed && parsed.channelId);
+  const guild = (parsed && parsed.guildId) || 'dm';
+  if (!channel) {
     return { ok: false, error: 'Open a Discord channel first — no channel found in the URL.' };
   }
 
@@ -100,10 +105,12 @@ async function handleCatchup(tabId) {
   }
 
   try {
+    const body = { token, guild_id: guild, channel_id: channel };
+    if (after) body.after = after;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token, guild_id: parsed.guildId, channel_id: parsed.channelId }),
+      body: JSON.stringify(body),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -111,11 +118,12 @@ async function handleCatchup(tabId) {
     }
     return {
       ok: true,
-      channelId: parsed.channelId,
-      guildId: parsed.guildId,
+      channelId: channel,
+      guildId: guild,
       fetched: data.fetched,
       appended: data.appended,
       total: data.total,
+      messages: data.messages || [],
     };
   } catch (e) {
     return { ok: false, error: `Could not reach lurk at ${url}. Is it running and is this origin permitted? (${e.message})` };
@@ -126,5 +134,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === 'LURK_CATCHUP') {
     handleCatchup(msg.tabId).then(sendResponse);
     return true; // keep the channel open for the async response
+  }
+  if (msg && msg.type === 'LURK_CAPTURE_FROM') {
+    const tabId = (sender.tab && sender.tab.id) || msg.tabId;
+    handleCatchup(tabId, { after: msg.messageId, channelId: msg.channelId }).then(sendResponse);
+    return true;
   }
 });
