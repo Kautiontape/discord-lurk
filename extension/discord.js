@@ -242,8 +242,10 @@
     Object.assign(tag.style, {
       position: 'absolute', right: '8px', top: '-9px',
       background: 'rgba(59,169,255,0.22)', color: '#bfe2ff',
-      font: '700 10px/1 system-ui, sans-serif', padding: '3px 7px',
-      borderRadius: '8px', letterSpacing: '.04em', textTransform: 'uppercase',
+      // Match Discord's own UI font (its --font-primary "gg sans" stack).
+      fontFamily: 'var(--font-primary, "gg sans", "Noto Sans", "Helvetica Neue", Helvetica, Arial, sans-serif)',
+      fontSize: '11px', fontWeight: '600', lineHeight: '1',
+      padding: '3px 7px', borderRadius: '8px', letterSpacing: '.02em', textTransform: 'uppercase',
     });
     overlayEl.appendChild(tag);
     document.body.appendChild(overlayEl);
@@ -265,6 +267,12 @@
     o.style.left = `${r.left}px`;
     o.style.width = `${r.width}px`;
     o.style.top = `${r.bottom - 1}px`;
+    // When the last-seen message is the newest one (nothing after it), you're
+    // fully caught up — drop the line (a full-width rule at the very bottom looks
+    // odd) but keep the pill. When there are newer messages below, show the line.
+    const msgs = document.querySelectorAll('[id^="chat-messages-"]');
+    const isNewest = msgs.length && msgs[msgs.length - 1] === el;
+    o.style.borderTopColor = isNewest ? 'transparent' : '#3BA9FF';
   }
 
   async function refreshLastSeen() {
