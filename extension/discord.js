@@ -70,9 +70,19 @@
     setTimeout(poll, 0);
   }
 
+  // The emoji quick-react bar at the top of a message menu is also made of
+  // role="menuitem" buttons, but they're small squares. The real vertical rows
+  // ("Add Reaction", "Reply", …) span most of the menu width — pick the first
+  // of those, so we both copy the right style and land below the emoji bar.
+  function firstListItem(menu) {
+    const items = [...menu.querySelectorAll('[role="menuitem"]')];
+    const menuWidth = menu.getBoundingClientRect().width || 240;
+    return items.find((el) => el.getBoundingClientRect().width > menuWidth * 0.6) || items[0] || null;
+  }
+
   function injectMenuItem(menu, target) {
     if (menu.querySelector('[data-lurk-item]')) return;
-    const sample = menu.querySelector('[role="menuitem"]');
+    const sample = firstListItem(menu);
     const item = document.createElement('div');
     item.setAttribute('role', 'menuitem');
     item.setAttribute('data-lurk-item', '1');
