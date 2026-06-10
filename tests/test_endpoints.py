@@ -176,6 +176,41 @@ def test_catchup_anchored_does_not_move_cursor(tmp_path, monkeypatch):
 
 
 @respx.mock
+def test_catchup_registers_channel_name_and_guild_name(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(return_value=httpx.Response(200, json=[_msg(1)]))
+    client.post("/api/catchup", json={
+        "token": TOKEN, "channel_id": "55", "guild_id": "g1",
+        "name": "general-talk", "guild_name": "Macguffins, Ltd.",
+    })
+    c = next(c for c in client.get("/api/channels").json() if c["id"] == "55")
+    assert c["name"] == "general-talk"
+    assert c["guild_name"] == "Macguffins, Ltd."
+
+
+@respx.mock
+def test_catchup_without_name_leaves_channel_unnamed(tmp_path, monkeypatch):
+    # The backend never auto-calls Discord for the name; it only stores what the
+    # client sends (the extension parses the tab title / falls back itself).
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(return_value=httpx.Response(200, json=[_msg(1)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+    c = next(c for c in client.get("/api/channels").json() if c["id"] == "55")
+    assert "name" not in c
+
+
+@respx.mock
+def test_catchup_name_not_overwritten_by_later_unnamed_pull(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(return_value=httpx.Response(200, json=[_msg(1)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1", "name": "general-talk"})
+    respx.get(f"{API}/channels/55/messages").mock(return_value=httpx.Response(200, json=[_msg(2)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+    c = next(c for c in client.get("/api/channels").json() if c["id"] == "55")
+    assert c["name"] == "general-talk"
+
+
+@respx.mock
 def test_state_returns_last_seen_after_catchup(tmp_path, monkeypatch):
     monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
     respx.get(f"{API}/channels/55/messages").mock(

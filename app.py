@@ -43,6 +43,8 @@ class CatchupRequest(BaseModel):
     channel_id: str = Field(min_length=1, max_length=30)
     guild_id: str = Field(default="dm", max_length=30)
     after: Optional[str] = Field(default=None, max_length=30)
+    name: Optional[str] = Field(default=None, max_length=100)
+    guild_name: Optional[str] = Field(default=None, max_length=100)
 
 
 def backfill_limit() -> int:
@@ -133,7 +135,15 @@ async def catchup(req: CatchupRequest):
             first_added_id=cleaned[0]["id"],
             when=when,
         )
-    archive.register_channel(base, {"id": req.channel_id, "guild_id": req.guild_id})
+    # Store any display names the client captured (extension parses the tab
+    # title). register_channel merges, so omitting them never wipes an existing
+    # name set by an earlier named pull.
+    record = {"id": req.channel_id, "guild_id": req.guild_id}
+    if req.name and req.name.strip():
+        record["name"] = req.name.strip()
+    if req.guild_name and req.guild_name.strip():
+        record["guild_name"] = req.guild_name.strip()
+    archive.register_channel(base, record)
     archive.append_log(base, {
         "at": when, "channel_id": req.channel_id, "guild_id": req.guild_id,
         "fetched": len(cleaned), "appended": appended, "anchored": anchored,
