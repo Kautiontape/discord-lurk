@@ -276,8 +276,15 @@
     hideOverlay();
     try {
       const res = await chrome.runtime.sendMessage({ type: 'LURK_LAST_SEEN', channelId: ch });
-      if (currentChannelId() === ch && res && res.ok) lastSeenId = res.lastSeenId || null;
-    } catch (e) { /* ignore */ }
+      if (currentChannelId() !== ch) return;
+      if (res && res.ok) {
+        lastSeenId = res.lastSeenId || null; // success (even if null) → keep it cached
+      } else {
+        lastSeenChannel = null; // lookup failed → let a later tick retry
+      }
+    } catch (e) {
+      if (currentChannelId() === ch) lastSeenChannel = null; // retry later
+    }
   }
 
   let rafPending = false;
