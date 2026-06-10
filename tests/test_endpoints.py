@@ -81,3 +81,41 @@ def test_catchup_maps_discord_error(tmp_path, monkeypatch):
     r = client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
     assert r.status_code == 403
     assert "access" in r.json()["detail"]
+
+
+@respx.mock
+def test_export_all_returns_full_archive_as_download(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[_msg(3), _msg(2), _msg(1)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+    r = client.get("/api/export", params={"channel_id": "55", "guild_id": "g1", "scope": "all"})
+    assert r.status_code == 200
+    assert "attachment" in r.headers["content-disposition"]
+    assert [m["id"] for m in r.json()["messages"]] == ["1", "2", "3"]
+
+
+@respx.mock
+def test_export_since_returns_only_last_pull(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[_msg(2), _msg(1)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+    respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[_msg(4), _msg(3)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+    r = client.get("/api/export", params={"channel_id": "55", "guild_id": "g1", "scope": "since"})
+    assert [m["id"] for m in r.json()["messages"]] == ["3", "4"]
+
+
+@respx.mock
+def test_channels_and_log_list_after_catchup(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[_msg(1)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+    chans = client.get("/api/channels").json()
+    assert chans == [{"id": "55", "guild_id": "g1"}]
+    log = client.get("/api/log").json()
+    assert log[0]["channel_id"] == "55"
+    assert log[0]["fetched"] == 1

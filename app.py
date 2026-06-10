@@ -1,10 +1,11 @@
+import json
 import os
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -130,6 +131,35 @@ async def catchup(req: CatchupRequest):
         "last_seen_id": archive.get_last_seen(base, req.channel_id),
         "messages": cleaned,
     }
+
+
+@app.get("/api/export")
+async def export(channel_id: str, guild_id: str = "dm", scope: str = "all"):
+    base = archive.data_dir()
+    messages = archive.read_archive(base, guild_id, channel_id)
+    if scope == "since":
+        marker = archive.load_state(base)["channels"].get(channel_id, {}).get("last_pull_first_id")
+        if marker is not None:
+            messages = [m for m in messages if int(m["id"]) >= int(marker)]
+    payload = json.dumps(
+        {"channel_id": channel_id, "guild_id": guild_id, "messages": messages},
+        indent=2,
+    )
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="lurk-{channel_id}.json"'},
+    )
+
+
+@app.get("/api/channels")
+async def channels():
+    return archive.list_channels(archive.data_dir())
+
+
+@app.get("/api/log")
+async def log(limit: int = 50):
+    return archive.read_log(archive.data_dir(), limit=limit)
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
