@@ -42,6 +42,7 @@ class CatchupRequest(BaseModel):
     token: str = Field(min_length=20, max_length=200)
     channel_id: str = Field(min_length=1, max_length=30)
     guild_id: str = Field(default="dm", max_length=30)
+    after: Optional[str] = Field(default=None, max_length=30)
 
 
 def backfill_limit() -> int:
@@ -105,13 +106,15 @@ async def get_channel(req: ChannelRequest):
 
 @app.post("/api/catchup")
 async def catchup(req: CatchupRequest):
-    _validate(req.token, {"channel_id": req.channel_id})
+    _validate(req.token, {"channel_id": req.channel_id, "after": req.after})
     _validate_guild(req.guild_id)
     base = archive.data_dir()
+    anchored = req.after is not None
     last_seen = archive.get_last_seen(base, req.channel_id)
+    start = req.after if anchored else last_seen
     try:
-        if last_seen:
-            raw = await discord_api.fetch_after(req.token, req.channel_id, last_seen)
+        if start:
+            raw = await discord_api.fetch_after(req.token, req.channel_id, start)
         else:
             raw = await discord_api.fetch_recent(req.token, req.channel_id, backfill_limit())
     except discord_api.DiscordError as e:
@@ -120,7 +123,10 @@ async def catchup(req: CatchupRequest):
     cleaned = [clean.clean_message(m) for m in raw]
     appended = archive.append_messages(base, req.guild_id, req.channel_id, cleaned)
     when = datetime.now(timezone.utc).isoformat()
-    if cleaned:
+    # An anchored capture is a non-destructive side-grab: archive it, but never
+    # move the routine catch-up cursor. Advancing it here would let an anchor on
+    # an older message skip the gap between the cursor and that message.
+    if cleaned and not anchored:
         archive.update_pull(
             base, req.channel_id,
             last_seen_id=cleaned[-1]["id"],
@@ -130,7 +136,7 @@ async def catchup(req: CatchupRequest):
     archive.register_channel(base, {"id": req.channel_id, "guild_id": req.guild_id})
     archive.append_log(base, {
         "at": when, "channel_id": req.channel_id, "guild_id": req.guild_id,
-        "fetched": len(cleaned), "appended": appended,
+        "fetched": len(cleaned), "appended": appended, "anchored": anchored,
     })
     return {
         "channel_id": req.channel_id,

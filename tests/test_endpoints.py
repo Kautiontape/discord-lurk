@@ -131,3 +131,56 @@ def test_catchup_rejects_traversal_guild(tmp_path, monkeypatch):
     monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
     r = client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "../evil"})
     assert r.status_code == 400
+
+
+@respx.mock
+def test_catchup_anchored_after_fetches_from_message_and_archives(tmp_path, monkeypatch):
+    # An explicit `after` anchors the fetch at that message (via fetch_after),
+    # regardless of any saved cursor, and still archives + returns the messages.
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    route = respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[_msg(12), _msg(11)]))
+    r = client.post(
+        "/api/catchup",
+        json={"token": TOKEN, "channel_id": "55", "guild_id": "g1", "after": "10"},
+    )
+    assert r.status_code == 200
+    assert route.calls.last.request.url.params.get("after") == "10"
+    body = r.json()
+    assert [m["id"] for m in body["messages"]] == ["11", "12"]
+    assert body["appended"] == 2
+    assert body["total"] == 2
+
+
+@respx.mock
+def test_catchup_anchored_does_not_move_cursor(tmp_path, monkeypatch):
+    # An anchored capture must not disturb routine catch-up: it leaves last_seen_id
+    # untouched so the next normal pull still resumes from the real cursor.
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[_msg(3), _msg(2), _msg(1)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+
+    respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[_msg(12), _msg(11)]))
+    anchored = client.post(
+        "/api/catchup",
+        json={"token": TOKEN, "channel_id": "55", "guild_id": "g1", "after": "10"},
+    )
+    assert anchored.json()["last_seen_id"] == "3"
+
+    route = respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+    assert route.calls.last.request.url.params.get("after") == "3"
+
+
+@respx.mock
+def test_catchup_rejects_non_snowflake_after(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(return_value=httpx.Response(200, json=[]))
+    r = client.post(
+        "/api/catchup",
+        json={"token": TOKEN, "channel_id": "55", "guild_id": "g1", "after": "not-a-number"},
+    )
+    assert r.status_code == 400
