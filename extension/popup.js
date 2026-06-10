@@ -26,9 +26,13 @@ function offerDownload(messages, channelId) {
   box.appendChild(a);
 }
 
+let endpointUrl = DEFAULT_ENDPOINT;
+
 async function init() {
   const cfg = await chrome.storage.sync.get({ endpoint: DEFAULT_ENDPOINT });
+  endpointUrl = cfg.endpoint;
   $('endpoint').textContent = cfg.endpoint;
+  $('open-app').href = cfg.endpoint;
 }
 
 $('open-options').addEventListener('click', () => chrome.runtime.openOptionsPage());
@@ -45,6 +49,7 @@ $('catchup').addEventListener('click', async () => {
   if (result && result.ok) {
     setStatus(`✓ ${result.appended} new (fetched ${result.fetched}, ${result.total} archived).`, 'ok');
     offerDownload(result.messages, result.channelId);
+    if (result.channelId) $('open-app').href = `${endpointUrl}/?channel=${result.channelId}`;
   } else {
     setStatus(`✗ ${result ? result.error : 'Something went wrong.'}`, 'err');
   }

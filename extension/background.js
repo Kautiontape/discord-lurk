@@ -62,6 +62,36 @@ function lurkReadToken() {
   return null;
 }
 
+// Discord tab titles look like "(12) Discord | #channel-name | Server Name"
+// (DMs: "Discord | @handle"). Pull the channel and server display names out.
+function parseDiscordTitle(title) {
+  if (!title) return { name: '', guildName: '' };
+  const t = title.replace(/^\(\d+\)\s*/, ''); // strip the "(12) " unread count
+  const parts = t.split(' | ').map((s) => s.trim());
+  const idx = parts.findIndex((p) => p.startsWith('#') || p.startsWith('@'));
+  if (idx === -1) return { name: '', guildName: '' };
+  return { name: parts[idx].replace(/^[#@]/, ''), guildName: parts[idx + 1] || '' };
+}
+
+// Fallback when the title doesn't parse: ask lurk to resolve the channel name
+// from Discord (it already proxies /api/channel).
+async function lookupChannelName(endpoint, token, channelId) {
+  try {
+    const base = normalizeEndpoint(endpoint);
+    if (!base) return '';
+    const res = await fetch(`${base}/api/channel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, channel_id: channelId }),
+    });
+    if (!res.ok) return '';
+    const d = await res.json();
+    return d.name || '';
+  } catch (e) {
+    return '';
+  }
+}
+
 async function handleCatchup(tabId, { after = null, channelId = null } = {}) {
   const cfg = await chrome.storage.sync.get({ endpoint: DEFAULT_ENDPOINT });
   const url = catchupUrl(cfg.endpoint);
@@ -104,9 +134,21 @@ async function handleCatchup(tabId, { after = null, channelId = null } = {}) {
     };
   }
 
+  // Display names so the channel shows correctly in the web app. Prefer the tab
+  // title (gives both channel + server name); fall back to a Discord lookup for
+  // the channel name only. Skipped for from-here captures in another channel.
+  const titleNames = channelId ? { name: '', guildName: '' } : parseDiscordTitle(tab.title || '');
+  let name = titleNames.name;
+  const guildName = titleNames.guildName;
+  if (!name && !channelId) {
+    name = await lookupChannelName(cfg.endpoint, token, channel);
+  }
+
   try {
     const body = { token, guild_id: guild, channel_id: channel };
     if (after) body.after = after;
+    if (name) body.name = name;
+    if (guildName) body.guild_name = guildName;
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
