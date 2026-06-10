@@ -76,7 +76,14 @@
     const item = document.createElement('div');
     item.setAttribute('role', 'menuitem');
     item.setAttribute('data-lurk-item', '1');
-    if (sample) item.className = sample.className; // inherit Discord's native item look
+    if (sample) {
+      // Inherit Discord's native item look, minus any transient focus/selected
+      // state the sampled row happened to carry (else ours looks stuck-highlighted).
+      item.className = sample.className
+        .split(/\s+/)
+        .filter((c) => !/focus|select|active|highlight/i.test(c))
+        .join(' ');
+    }
     item.textContent = 'lurk: capture from here';
     item.style.whiteSpace = 'nowrap';
     item.style.cursor = 'pointer';
