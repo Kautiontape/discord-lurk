@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0C0C0E; color: #E8E8EC; max-width: 520px; margin: 40px auto; padding: 0 20px; }
+    h1 { font-size: 18px; } h1 .a { color: #FFD000; }
+    p { font-size: 13px; color: #8888A0; line-height: 1.5; }
+    label { display: block; font-size: 12px; color: #8888A0; margin: 16px 0 6px; }
+    input { width: 100%; padding: 9px 10px; border-radius: 5px; border: 1px solid #2A2A30;
+            background: #0A0A0C; color: #E8E8EC; font-family: ui-monospace, monospace; font-size: 13px; }
+    button { margin-top: 14px; font-size: 13px; font-weight: 600; border-radius: 5px; cursor: pointer;
+             border: 1px solid #FFD000; background: #FFD000; color: #0a0a0c; padding: 9px 14px; }
+    #status { margin-top: 12px; font-size: 13px; min-height: 18px; }
+    #status.ok { color: #4CAF50; } #status.err { color: #FF5252; }
+  </style>
+</head>
+<body>
+  <h1><span class="a">lurk</span> extension — settings</h1>
+  <p>Where should captured messages be sent? Point this at your own lurk instance —
+     locally (<code>http://localhost:8111</code>) or your own server. The extension will ask
+     for permission to talk to that host.</p>
+  <label for="endpoint">lurk endpoint</label>
+  <input type="text" id="endpoint" placeholder="http://localhost:8111" spellcheck="false">
+  <button id="save">Save</button>
+  <div id="status"></div>
+  <script src="lib/endpoint.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
