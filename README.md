@@ -39,6 +39,12 @@ Archives and state live under `data/` (override with `LURK_DATA_DIR`):
 `data/archives/<guild>/<channel>.jsonl`, `data/state.json`, `data/channels.json`,
 `data/log.jsonl`. The Discord token is used per-request and never written to disk.
 
+## Browser extension
+
+`extension/` is a Chrome MV3 extension that captures the Discord channel you're
+viewing and calls `POST /api/catchup` on your configured lurk instance — no
+DevTools, no copy-pasting ids. See `extension/README.md` to load it.
+
 ## Tests
 
 ```bash
