@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "lurk — Discord catch-up",
+  "version": "0.1.0",
+  "description": "Capture the Discord channel you're viewing and send it to your lurk instance to catch up.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "lurk — catch up on this channel"
+  },
+  "options_page": "options.html",
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["storage", "tabs"],
+  "host_permissions": [
+    "https://discord.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://lurk.kautiontape.com/*"
+  ],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://discord.com/*"],
+      "js": ["lib/parse.js", "content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
