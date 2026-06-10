@@ -176,6 +176,29 @@ def test_catchup_anchored_does_not_move_cursor(tmp_path, monkeypatch):
 
 
 @respx.mock
+def test_state_returns_last_seen_after_catchup(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    respx.get(f"{API}/channels/55/messages").mock(
+        return_value=httpx.Response(200, json=[_msg(3), _msg(2), _msg(1)]))
+    client.post("/api/catchup", json={"token": TOKEN, "channel_id": "55", "guild_id": "g1"})
+    r = client.get("/api/state", params={"channel_id": "55"})
+    assert r.status_code == 200
+    assert r.json()["last_seen_id"] == "3"
+
+
+def test_state_unknown_channel_returns_null(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    r = client.get("/api/state", params={"channel_id": "999"})
+    assert r.status_code == 200
+    assert r.json()["last_seen_id"] is None
+
+
+def test_state_rejects_bad_channel_id(tmp_path, monkeypatch):
+    monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
+    assert client.get("/api/state", params={"channel_id": "../x"}).status_code == 400
+
+
+@respx.mock
 def test_catchup_rejects_non_snowflake_after(tmp_path, monkeypatch):
     monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
     respx.get(f"{API}/channels/55/messages").mock(return_value=httpx.Response(200, json=[]))

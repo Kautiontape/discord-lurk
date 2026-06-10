@@ -171,6 +171,15 @@ async def export(channel_id: str, guild_id: str = "dm", scope: str = "all"):
     )
 
 
+@app.get("/api/state")
+async def state(channel_id: str):
+    if not SNOWFLAKE_RE.match(channel_id):
+        raise HTTPException(status_code=400, detail="invalid channel_id")
+    base = archive.data_dir()
+    ch = archive.load_state(base)["channels"].get(channel_id, {})
+    return {"channel_id": channel_id, "last_seen_id": ch.get("last_seen_id")}
+
+
 @app.get("/api/channels")
 async def channels():
     return archive.list_channels(archive.data_dir())
