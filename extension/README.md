@@ -16,8 +16,7 @@ instance's `POST /api/catchup`.
 
 1. Open `discord.com` in the browser (not the desktop app) and go to a channel.
 2. Click the lurk toolbar icon.
-3. First time: tick the consent box (acknowledging the Discord-ToS / self-bot risk).
-4. Click **Catch me up on this channel**. New messages since your last pull are
+3. Click **Catch me up on this channel**. New messages since your last pull are
    fetched, cleaned, and archived by your lurk instance; the popup shows the counts.
 
 ## What it sends
@@ -28,9 +27,11 @@ read per-click and is never stored by the extension. DMs (`@me`) are sent as
 
 ## Caveat
 
-The token is read via the same-origin-iframe `localStorage` technique. If Discord
-changes its storage and the read fails, the popup says so — fall back to the lurk
-web app's manual-token flow.
+The token is read from Discord's running web client (its webpack `getToken()`
+module), injected into the page's MAIN world from the background worker; the old
+same-origin-iframe `localStorage` read is kept only as a fallback for older
+builds. Discord changes its internals periodically, so if both reads fail the
+popup says so — fall back to the lurk web app's manual-token flow.
 
 ## Tests
 
