@@ -491,6 +491,13 @@
       </div>
     </section>
 
+    <section id="log-section">
+      <h2><span>transparency log</span>
+        <button class="btn subtle" id="refresh-log" style="margin-left:auto;">refresh</button>
+      </h2>
+      <div id="log-list" class="empty-state">no pulls recorded yet.</div>
+    </section>
+
     <div id="progress" class="progress-panel hidden">
       <h3 id="progress-title">fetching messages</h3>
       <div class="status" id="progress-status">starting...</div>
@@ -927,10 +934,29 @@
       renderConsent();
     });
 
+    async function renderLog() {
+      const box = $('log-list');
+      try {
+        const res = await fetch('/api/log?limit=20');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const entries = await res.json();
+        if (!entries.length) { box.className = 'empty-state'; box.textContent = 'no pulls recorded yet.'; return; }
+        box.className = '';
+        box.innerHTML = entries.map((e) =>
+          `<div class="channel-history">${new Date(e.at).toLocaleString()} · channel ${e.channel_id} · `
+          + `fetched ${e.fetched}, added ${e.appended}</div>`).join('');
+      } catch (err) {
+        box.className = 'empty-state';
+        box.textContent = `log unavailable: ${err.message}`;
+      }
+    }
+    $('refresh-log').addEventListener('click', renderLog);
+
     // ---- init ----
     renderConsent();
     renderTokenSection();
     renderChannels();
+    renderLog();
   </script>
 </body>
 </html>
