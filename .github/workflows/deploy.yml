@@ -1,16 +1,23 @@
 name: Deploy to ktn
-
 on:
-  push:
-    branches: [main]
-
+  # workflow_run:
+  #   workflows: ['build & publish']
+  #   types: [completed]
+  #   branches: [main]
+  workflow_dispatch:
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [self-hosted, ktn]
+    permissions:
+      packages: read
     steps:
-      - name: Deploy
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+      - name: Pull image and restart
         run: |
           cd /opt/services/discord-lurk
           git pull origin main
-          docker compose build
+          docker compose pull
           docker compose up -d
+          docker image prune -f
