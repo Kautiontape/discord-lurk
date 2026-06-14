@@ -1,6 +1,6 @@
 services:
   app:
-    image: ghcr.io/kautiontape/discord-lurkatest
+    image: ghcr.io/kautiontape/discord-lurk:latest
     container_name: discord-lurk
     ports:
       - "127.0.0.1:8111:8000"
