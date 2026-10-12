@@ -13,38 +13,48 @@ const DEFAULT_ENDPOINT = 'http://localhost:8111';
 // window.webpackChunkdiscord_app.
 function lurkReadToken() {
   // Primary: read the token straight from Discord's running webpack modules.
-  try {
-    let token;
-    window.webpackChunkdiscord_app.push([
-      [Symbol()],
-      {},
-      (req) => {
-        for (const mod of Object.values(req.c)) {
-          try {
-            const ex = mod && mod.exports;
-            if (!ex || ex === window) continue;
-            if (typeof ex.getToken === 'function') token = ex.getToken();
-            for (const key in ex) {
-              const sub = ex[key];
-              if (
-                sub &&
-                typeof sub.getToken === 'function' &&
-                sub[Symbol.toStringTag] !== 'IntlMessagesProxy'
-              ) {
-                token = sub.getToken();
-              }
-            }
-          } catch (e) {
-            /* keep scanning other modules */
+  // `token` is hoisted to function scope and the push is isolated in its own
+  // try/catch because current Discord builds throw inside webpack's *own*
+  // post-callback bookkeeping ("Cannot convert undefined or null to object"
+  // out of .push) AFTER our callback has already captured the token. The old
+  // code set `token` in a try-scoped var and only returned it on the line
+  // after .push(); the throw skipped that line and the token was discarded.
+  // Here the throw can't lose an already-read token, and we stop at the first
+  // non-empty match (also avoids a later empty getToken clobbering a good one).
+  let token = null;
+  const scan = (req) => {
+    for (const mod of Object.values(req.c || req.m || {})) {
+      try {
+        const ex = mod && mod.exports;
+        if (!ex || ex === window) continue;
+        if (typeof ex.getToken === 'function') {
+          const t = ex.getToken();
+          if (t) { token = t; return; } // first non-empty wins; stop scanning
+        }
+        for (const key in ex) {
+          let sub;
+          try { sub = ex[key]; } catch (e) { continue; } // some exports are throwing getters
+          if (
+            sub &&
+            typeof sub.getToken === 'function' &&
+            sub[Symbol.toStringTag] !== 'IntlMessagesProxy'
+          ) {
+            const t = sub.getToken();
+            if (t) { token = t; return; } // first non-empty wins; stop scanning
           }
         }
-      },
-    ]);
+      } catch (e) {
+        /* keep scanning other modules */
+      }
+    }
+  };
+  try {
+    window.webpackChunkdiscord_app.push([[Symbol()], {}, scan]);
     window.webpackChunkdiscord_app.pop();
-    if (token) return token;
   } catch (e) {
-    /* fall through to the legacy method */
+    /* webpack's post-callback bookkeeping threw; scan() may have set `token` */
   }
+  if (token) return token;
 
   // Fallback: the old same-origin-iframe localStorage trick (older builds only).
   try {
