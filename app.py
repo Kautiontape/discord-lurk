@@ -113,7 +113,12 @@ async def catchup(req: CatchupRequest):
     base = archive.data_dir()
     anchored = req.after is not None
     last_seen = archive.get_last_seen(base, req.channel_id)
-    start = req.after if anchored else last_seen
+    # Routine catch-up resumes strictly after the cursor (last_seen points at a
+    # message that is already archived). A user-anchored "capture from here" is
+    # inclusive of the message picked: Discord's `after` is exclusive, so start
+    # one snowflake earlier to pull the chosen message itself plus everything
+    # after it.
+    start = str(int(req.after) - 1) if req.after is not None else last_seen
     try:
         if start:
             raw = await discord_api.fetch_after(req.token, req.channel_id, start)

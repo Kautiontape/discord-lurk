@@ -134,22 +134,24 @@ def test_catchup_rejects_traversal_guild(tmp_path, monkeypatch):
 
 
 @respx.mock
-def test_catchup_anchored_after_fetches_from_message_and_archives(tmp_path, monkeypatch):
-    # An explicit `after` anchors the fetch at that message (via fetch_after),
-    # regardless of any saved cursor, and still archives + returns the messages.
+def test_catchup_anchored_after_fetches_inclusively_and_archives(tmp_path, monkeypatch):
+    # An explicit `after` anchors the fetch at that message, regardless of any
+    # saved cursor, and is INCLUSIVE of the picked message: Discord's `after` is
+    # exclusive, so the backend asks for one snowflake earlier ("9" for "10") and
+    # the chosen message (id 10) comes back in the archive + response.
     monkeypatch.setenv("LURK_DATA_DIR", str(tmp_path))
     route = respx.get(f"{API}/channels/55/messages").mock(
-        return_value=httpx.Response(200, json=[_msg(12), _msg(11)]))
+        return_value=httpx.Response(200, json=[_msg(12), _msg(11), _msg(10)]))
     r = client.post(
         "/api/catchup",
         json={"token": TOKEN, "channel_id": "55", "guild_id": "g1", "after": "10"},
     )
     assert r.status_code == 200
-    assert route.calls.last.request.url.params.get("after") == "10"
+    assert route.calls.last.request.url.params.get("after") == "9"
     body = r.json()
-    assert [m["id"] for m in body["messages"]] == ["11", "12"]
-    assert body["appended"] == 2
-    assert body["total"] == 2
+    assert [m["id"] for m in body["messages"]] == ["10", "11", "12"]
+    assert body["appended"] == 3
+    assert body["total"] == 3
 
 
 @respx.mock
